@@ -6,11 +6,12 @@ const (
 	EnvAppEnv  = "APP_ENV"
 
 	// DB env keys
-	EnvDBHost = "DB_HOST"
-	EnvDBPort = "DB_PORT"
-	EnvDBUser = "DB_USER"
-	EnvDBPass = "DB_PASS"
-	EnvDBName = "DB_NAME"
+	EnvDBHost  = "DB_HOST"
+	EnvDBPort  = "DB_PORT"
+	EnvDBUser  = "DB_USER"
+	EnvDBPass  = "DB_PASS"
+	EnvDBName  = "DB_NAME"
+	EnvSSLMode = "SSL_MODE"
 
 	// Redis env keys
 	EnvRedisHost = "REDIS_HOST"

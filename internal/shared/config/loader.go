@@ -15,6 +15,7 @@ func NewConfig() *Config {
 			User:     getEnv(EnvDBUser, "postgres"),
 			Password: getEnv(EnvDBPass, ""),
 			Name:     getEnv(EnvDBName, "app"),
+			SSLMode:  getEnv(EnvSSLMode, "disable"),
 		},
 
 		Redis: RedisConfig{

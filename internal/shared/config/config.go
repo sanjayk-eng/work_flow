@@ -17,6 +17,7 @@ type DBConfig struct {
 	User     string
 	Password string
 	Name     string
+	SSLMode  string
 }
 
 type RedisConfig struct {
