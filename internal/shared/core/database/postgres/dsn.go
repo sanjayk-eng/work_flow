@@ -2,7 +2,7 @@ package postgres
 
 import (
 	"fmt"
-	"github/sanjay-khandelwal/internal/shared/config"
+	"github/sanjay-khandelwal/internal/shared/core/config"
 )
 
 func BuildDSN(cfg config.DBConfig) string {

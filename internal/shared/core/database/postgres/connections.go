@@ -2,8 +2,7 @@ package postgres
 
 import (
 	"context"
-
-	"github/sanjay-khandelwal/internal/shared/config"
+	"github/sanjay-khandelwal/internal/shared/core/config"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
