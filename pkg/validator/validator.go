@@ -42,6 +42,25 @@ func Validate(s any) map[string]string {
 	return errs
 }
 
+// BindAndValidate binds JSON from a gin context and validates the struct in one call.
+// Returns (true, nil) on success.
+// Returns (false, map) on validation failure — map is ready to send as JSON errors.
+// Returns (false, map{"_": "..."}) on JSON parse failure.
+func BindAndValidate(c interface {
+	ShouldBindJSON(any) error
+}, s any) (ok bool, errs map[string]string) {
+	type binder interface {
+		ShouldBindJSON(any) error
+	}
+	if err := c.ShouldBindJSON(s); err != nil {
+		return false, map[string]string{"_": "invalid JSON body"}
+	}
+	if errs := Validate(s); errs != nil {
+		return false, errs
+	}
+	return true, nil
+}
+
 // fieldMessage returns a human-readable message for a validation error.
 func fieldMessage(e validator.FieldError) string {
 	switch e.Tag() {
