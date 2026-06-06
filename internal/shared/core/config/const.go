@@ -16,4 +16,13 @@ const (
 	// Redis env keys
 	EnvRedisHost = "REDIS_HOST"
 	EnvRedisPort = "REDIS_PORT"
+
+	// JWT env keys
+	EnvJWTSecret        = "JWT_SECRET"
+	EnvJWTAccessExpiry  = "JWT_ACCESS_EXPIRY"
+	EnvJWTRefreshExpiry = "JWT_REFRESH_EXPIRY"
+	EnvJWTIssuer        = "JWT_ISSUER"
+
+	// Log env keys
+	EnvLogLevel = "LOG_LEVEL"
 )

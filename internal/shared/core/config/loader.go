@@ -22,6 +22,17 @@ func NewConfig() *Config {
 			Host: getEnv(EnvRedisHost, "localhost"),
 			Port: getEnv(EnvRedisPort, "6379"),
 		},
+
+		JWT: JWTConfig{
+			SecretKey:     getEnv(EnvJWTSecret, "change-this-secret"),
+			AccessExpiry:  getEnv(EnvJWTAccessExpiry, "15m"),
+			RefreshExpiry: getEnv(EnvJWTRefreshExpiry, "168h"),
+			Issuer:        getEnv(EnvJWTIssuer, "app-service"),
+		},
+
+		Log: LogConfig{
+			Level: getEnv(EnvLogLevel, "info"),
+		},
 	}
 }
 
