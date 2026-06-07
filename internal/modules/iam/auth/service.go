@@ -9,9 +9,10 @@ import (
 	"net/url"
 	"time"
 
-	"github/sanjay-khandelwal/internal/modules/auth/dto"
-	"github/sanjay-khandelwal/internal/modules/user"
-	userDto "github/sanjay-khandelwal/internal/modules/user/dto"
+	"github/sanjay-khandelwal/internal/modules/iam/auth/dto"
+	"github/sanjay-khandelwal/internal/modules/iam/session"
+	"github/sanjay-khandelwal/internal/modules/iam/user"
+	userDto "github/sanjay-khandelwal/internal/modules/iam/user/dto"
 	"github/sanjay-khandelwal/internal/shared/apperr"
 	"github/sanjay-khandelwal/internal/shared/core/database/postgres"
 	"github/sanjay-khandelwal/internal/shared/security"
@@ -22,52 +23,58 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Service is the interface handlers depend on.
 type Service interface {
-
-	// registration process
 	Register(ctx context.Context, req *dto.RegisterRequest) (*dto.UserResponse, error)
 	CreateUser(ctx context.Context, tx pgx.Tx, req *dto.RegisterRequest) (uuid.UUID, error)
-
-	//email verification process
 	SendVerification(ctx context.Context, tx pgx.Tx, userID uuid.UUID, email string) error
 	EmailVerify(ctx context.Context, token string) error
-	validateVerificationToken(verification *EmailVerification, token string) error
-
 	Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error)
+
+	// Logout revokes the session associated with the given refresh token.
+	Logout(ctx context.Context, refreshToken string) error
+
+	// LogoutAll revokes every active session for the given user.
+	LogoutAll(ctx context.Context, userID uuid.UUID) error
 }
 
 type service struct {
 	repo        Repository
 	hasher      *password.Hasher
 	jwt         *jwt.Service
-	userservice user.Service
-	posgressDb  *postgres.DB
+	userService user.Service
+	sessionSvc  session.Service
+	db          *postgres.DB
 }
 
-func NewService(repo Repository, db *postgres.DB, hasher *password.Hasher, jwt *jwt.Service, userservice user.Service) Service {
-	return &service{repo: repo, posgressDb: db, hasher: hasher, jwt: jwt, userservice: userservice}
+func NewService(
+	repo Repository,
+	db *postgres.DB,
+	hasher *password.Hasher,
+	jwtSvc *jwt.Service,
+	userService user.Service,
+	sessionSvc session.Service,
+) Service {
+	return &service{
+		repo:        repo,
+		db:          db,
+		hasher:      hasher,
+		jwt:         jwtSvc,
+		userService: userService,
+		sessionSvc:  sessionSvc,
+	}
 }
 
-// Register creates a new user + profile inside a single transaction.
-//
-// Flow:
-//  1. Hash password (Argon2id)
-//  2. Begin transaction
-//  3. INSERT users — DB unique constraint returns 409 on duplicate email (no TOCTOU)
-//  4. INSERT profiles
-//  5. Commit → return response
 func (s *service) Register(ctx context.Context, req *dto.RegisterRequest) (*dto.UserResponse, error) {
 	var resp *dto.UserResponse
 
-	err := s.posgressDb.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
+	err := s.db.WithTx(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		userID, err := s.CreateUser(ctx, tx, req)
 		if err != nil {
 			return err
 		}
 
-		if err := s.userservice.CreateProfile(ctx, tx, &userDto.CreateProfileRequest{
+		if err := s.userService.CreateProfile(ctx, tx, &userDto.CreateProfileRequest{
 			UserID:    userID.String(),
 			FirstName: req.FirstName,
 			LastName:  req.LastName,
@@ -91,39 +98,33 @@ func (s *service) Register(ctx context.Context, req *dto.RegisterRequest) (*dto.
 }
 
 func (s *service) CreateUser(ctx context.Context, tx pgx.Tx, req *dto.RegisterRequest) (uuid.UUID, error) {
-
 	exists, err := s.repo.ExistsByEmail(ctx, req.Email)
 	if err != nil {
 		return uuid.Nil, apperr.Internal("failed to check email", err)
 	}
-
 	if exists {
 		return uuid.Nil, apperr.Conflict("email already registered")
 	}
 
-	// Hash password
 	hash, err := s.hasher.Hash(req.Password)
 	if err != nil {
 		return uuid.Nil, apperr.Internal("failed to hash password", err)
 	}
 
-	// Create user
 	userID, err := s.repo.CreateUser(ctx, tx, &User{
 		Email:         req.Email,
 		PasswordHash:  hash,
 		EmailVerified: false,
 		Status:        UserStatusActive,
-	},
-	)
+	})
 	if err != nil {
-		return uuid.Nil,
-			apperr.Internal("failed to create user", err)
+		return uuid.Nil, apperr.Internal("failed to create user", err)
 	}
 
 	return userID, nil
 }
-func (s *service) SendVerification(ctx context.Context, tx pgx.Tx, userID uuid.UUID, email string) error {
 
+func (s *service) SendVerification(ctx context.Context, tx pgx.Tx, userID uuid.UUID, email string) error {
 	token, err := security.GenerateToken()
 	if err != nil {
 		return apperr.Internal("failed to generate verification token", err)
@@ -137,13 +138,13 @@ func (s *service) SendVerification(ctx context.Context, tx pgx.Tx, userID uuid.U
 		"http://localhost:8082/api/v1/auth/verify-email?token=%s",
 		url.QueryEscape(token),
 	)
-	// TODO: send email
+	// TODO: replace with email service
 	fmt.Println("verification url:", verifyURL)
 
 	return nil
 }
-func (s *service) EmailVerify(ctx context.Context, token string) error {
 
+func (s *service) EmailVerify(ctx context.Context, token string) error {
 	verification, err := s.repo.GetVerificationByToken(ctx, token)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -162,31 +163,25 @@ func (s *service) EmailVerify(ctx context.Context, token string) error {
 
 	return nil
 }
-func (s *service) validateVerificationToken(verification *EmailVerification, token string) error {
 
-	if verification == nil {
+func (s *service) validateVerificationToken(v *EmailVerification, token string) error {
+	if v == nil {
 		return apperr.NotFound("verification token not found")
 	}
-
-	if verification.Token != token {
+	if v.Token != token {
 		return apperr.BadRequest("invalid verification token")
 	}
-
-	if time.Now().After(verification.ExpiresAt) {
+	if time.Now().After(v.ExpiresAt) {
 		return apperr.BadRequest("verification token expired")
 	}
-
-	if verification.VerifiedAt != nil {
+	if v.VerifiedAt != nil {
 		return apperr.BadRequest("email already verified")
 	}
-
 	return nil
 }
 
 func (s *service) Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error) {
-
-	// 1. Get user
-	user, err := s.repo.GetByEmail(ctx, req.Email)
+	u, err := s.repo.GetByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, apperr.Unauthorized("invalid credentials")
@@ -194,112 +189,107 @@ func (s *service) Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginR
 		return nil, apperr.Internal("failed to get user", err)
 	}
 
-	// 2. Email verification check
-	if !user.EmailVerified {
+	if !u.EmailVerified {
 		return nil, apperr.Forbidden("email not verified")
 	}
 
-	// 3. Check password
-	ok, err := s.hasher.Verify(req.Password, user.PasswordHash)
+	ok, err := s.hasher.Verify(req.Password, u.PasswordHash)
 	if err != nil {
 		return nil, apperr.Internal("failed to verify password", err)
 	}
-
 	if !ok {
 		return nil, apperr.Unauthorized("invalid credentials")
 	}
-	accessToken, err := s.jwt.CreateToken(user.ID, user.Email, s.jwt.Cfg.AccessTokenTTL)
+
+	accessToken, err := s.jwt.CreateToken(u.ID, u.Email, s.jwt.Cfg.AccessTokenTTL)
 	if err != nil {
 		return nil, apperr.Internal("failed to generate access token", err)
 	}
-	// 5. Generate refresh token (random string)
+
 	refreshToken, refreshHash, err := security.GenerateRefreshToken()
 	if err != nil {
 		return nil, apperr.Internal("failed to generate refresh token", err)
 	}
 
-	// 6. Store session in DB
-	err = s.repo.CreateSession(ctx, &Session{
-		UserID:           uuid.MustParse(user.ID),
-		RefreshTokenHash: refreshHash,
-		ExpiresAt:        time.Now().Add(7 * 24 * time.Hour),
-	})
-	if err != nil {
-		return nil, apperr.Internal("failed to create session", err)
+	if err := s.sessionSvc.Create(ctx, uuid.MustParse(u.ID), refreshHash, time.Now().Add(7*24*time.Hour)); err != nil {
+		return nil, err
 	}
 
-	// 7. Return response
 	return &dto.LoginResponse{
-		UserID:       user.ID,
+		UserID:       u.ID,
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
 }
 
 func (s *service) RefreshToken(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error) {
-
-	// 1. Hash incoming refresh token
+	// 1. Hash incoming token to look up session
 	hash := sha256.Sum256([]byte(refreshToken))
 	refreshHash := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(hash[:])
 
 	// 2. Find session
-	session, err := s.repo.GetSessionByRefreshHash(ctx, refreshHash)
+	sess, err := s.sessionSvc.GetByRefreshHash(ctx, refreshHash)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperr.Unauthorized("invalid refresh token")
-		}
-		return nil, apperr.Internal("failed to get session", err)
+		return nil, err
 	}
 
-	// 3. Check expired
-	if time.Now().After(session.ExpiresAt) {
+	// 3. Expired check
+	if time.Now().After(sess.ExpiresAt) {
 		return nil, apperr.Unauthorized("refresh token expired")
 	}
 
-	// 4. Check revoked
-	if session.RevokedAt != nil {
-		// reuse attack protection
-		_ = s.repo.RevokeAll(ctx, session.UserID)
-
+	// 4. Revoked check — reuse-attack protection
+	if sess.RevokedAt != nil {
+		_ = s.sessionSvc.RevokeAll(ctx, sess.UserID)
 		return nil, apperr.Unauthorized("refresh token reused")
 	}
 
-	// 5. Revoke current session (ROTATION STEP 1)
-	now := time.Now()
-	if err := s.repo.RevokeSession(ctx, session.ID, now); err != nil {
-		return nil, apperr.Internal("failed to revoke session", err)
+	// 5. Rotate: revoke current session
+	if err := s.sessionSvc.Revoke(ctx, sess.ID); err != nil {
+		return nil, err
 	}
 
-	// 6. Generate new access token
-	user, err := s.repo.GetByID(ctx, session.UserID)
+	// 6. Load user for new token claims
+	u, err := s.repo.GetByID(ctx, sess.UserID)
 	if err != nil {
 		return nil, apperr.Internal("failed to get user", err)
 	}
 
-	accessToken, err := s.jwt.CreateToken(user.ID, user.Email, s.jwt.Cfg.AccessTokenTTL)
+	accessToken, err := s.jwt.CreateToken(u.ID, u.Email, s.jwt.Cfg.AccessTokenTTL)
 	if err != nil {
 		return nil, apperr.Internal("failed to create access token", err)
 	}
 
-	// 7. Generate NEW refresh token (ROTATION STEP 2)
+	// 7. Issue new refresh token (rotation)
 	newRefreshToken, newHash, err := security.GenerateRefreshToken()
 	if err != nil {
 		return nil, apperr.Internal("failed to generate refresh token", err)
 	}
 
-	// 8. Store NEW session
-	err = s.repo.CreateSession(ctx, &Session{
-		UserID:           session.UserID,
-		RefreshTokenHash: newHash,
-		ExpiresAt:        s.jwt.Cfg.RefreshTokenTTL,
-	})
-	if err != nil {
-		return nil, apperr.Internal("failed to create session", err)
+	if err := s.sessionSvc.Create(ctx, sess.UserID, newHash, s.jwt.Cfg.RefreshTokenTTL); err != nil {
+		return nil, err
 	}
 
-	// 9. Response
 	return &dto.RefreshResponse{
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
 	}, nil
+}
+
+func (s *service) Logout(ctx context.Context, refreshToken string) error {
+	// Hash the incoming token to locate the session row
+	hash := sha256.Sum256([]byte(refreshToken))
+	refreshHash := base64.URLEncoding.WithPadding(base64.NoPadding).EncodeToString(hash[:])
+
+	sess, err := s.sessionSvc.GetByRefreshHash(ctx, refreshHash)
+	if err != nil {
+		// Token not found or already revoked — treat as success (idempotent logout)
+		return nil
+	}
+
+	return s.sessionSvc.Revoke(ctx, sess.ID)
+}
+
+func (s *service) LogoutAll(ctx context.Context, userID uuid.UUID) error {
+	return s.sessionSvc.RevokeAll(ctx, userID)
 }

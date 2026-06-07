@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+
 	"github/sanjay-khandelwal/internal/shared/apperr"
 	"github/sanjay-khandelwal/internal/shared/core/database/postgres"
 

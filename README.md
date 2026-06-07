@@ -24,88 +24,132 @@ A modular Go REST API built with Gin, PostgreSQL, and JWT authentication.
 .
 ├── cmd/
 │   └── api/
-│       ├── main.go                               # Entry point — wires config, DB, logger, server
-│       └── .env                                  # Local environment variables
+│       ├── main.go                                      # Entry point — wires config, DB, server, IAM module
+│       └── .env                                         # Local environment variables
 │
 ├── internal/
 │   ├── middleware/
-│   │   ├── auth.go                               # Authenticate — JWT verify, sets user_id + email
-│   │   ├── org.go                                # OrgContext — DB membership lookup, sets org_id + role
-│   │   └── rbac.go                               # RequireRole — role-based access check
+│   │   ├── auth.go                                      # Authenticate — JWT verify, sets user_id + email
+│   │   ├── org.go                                       # OrgContext — DB membership lookup, sets org_id + role
+│   │   └── rbac.go                                      # RequireRole — role-based access check
 │   │
 │   ├── modules/
-│   │   ├── auth/
-│   │   │   ├── dto/
-│   │   │   │   ├── request.go                    # RegisterRequest (validated struct tags)
-│   │   │   │   └── response.go                   # UserResponse, UserResponseInput, NewUserResponse()
-│   │   │   ├── handler.go                        # Register — bind, validate, call service
-│   │   │   ├── models.go                         # User, Profile domain structs
-│   │   │   ├── module.go                         # New() wires repo→service→handler, Mount() registers routes
-│   │   │   ├── repository.go                     # Repository interface (ExistsByEmail, CreateUser, WithTx…)
-│   │   │   ├── repository_postgres.go            # Postgres implementation of Repository
-│   │   │   ├── router.go                         # RegisterRoutes — POST /auth/register
-│   │   │   └── service.go                        # Service interface + registration flow logic
-│   │   ├── organization/                         # (placeholder)
-│   │   └── user/                                 # (placeholder)
+│   │   ├── iam/                                         # Identity & Access Management domain
+│   │   │   ├── module.go                                # Top-level IAM module — wires auth + user + session
+│   │   │   │
+│   │   │   ├── auth/                                    # Authentication sub-module
+│   │   │   │   ├── dto/
+│   │   │   │   │   ├── request.go                       # RegisterRequest, LoginRequest
+│   │   │   │   │   └── response.go                      # UserResponse, LoginResponse, RefreshResponse
+│   │   │   │   ├── handler.go                           # HTTP handlers — Register, Login, Refresh, EmailVerification
+│   │   │   │   ├── models.go                            # User, EmailVerification domain structs
+│   │   │   │   ├── module.go                            # NewModule(handler) + Mount()
+│   │   │   │   ├── repository.go                        # Repository interface — users + email verifications
+│   │   │   │   ├── repository_postgres.go               # Postgres implementation
+│   │   │   │   ├── router.go                            # RegisterRoutes — /auth group
+│   │   │   │   └── service.go                           # Service interface + full auth flow logic
+│   │   │   │
+│   │   │   ├── user/                                    # User profile sub-module
+│   │   │   │   ├── dto/
+│   │   │   │   │   ├── request.go                       # CreateProfileRequest
+│   │   │   │   │   └── response.go                      # (reserved)
+│   │   │   │   ├── models.go                            # Profile domain struct
+│   │   │   │   ├── repository.go                        # Repository interface — profiles
+│   │   │   │   ├── repository_postgres.go               # Postgres implementation
+│   │   │   │   └── service.go                           # Service interface + CreateProfile logic
+│   │   │   │
+│   │   │   └── session/                                 # Session lifecycle sub-module
+│   │   │       ├── models.go                            # Session domain struct
+│   │   │       ├── repository.go                        # Repository interface — sessions CRUD
+│   │   │       ├── repository_postgres.go               # Postgres implementation
+│   │   │       └── service.go                           # Service interface — Create, GetByRefreshHash, Revoke, RevokeAll
+│   │   │
+│   │   └── organization/                                # (placeholder)
 │   │
 │   └── shared/
 │       ├── apperr/
-│       │   └── apperr.go                         # Typed domain errors — NotFound, Unauthorized, Conflict…
+│       │   └── apperr.go                                # Typed domain errors — NotFound, Unauthorized, Conflict…
 │       │
 │       ├── core/
 │       │   ├── config/
-│       │   │   ├── config.go                     # Config, AppConfig, DBConfig, JWTConfig, LogConfig structs
-│       │   │   ├── const.go                      # Env key constants (app, db, redis, jwt, log)
-│       │   │   ├── env.go                        # godotenv loader
-│       │   │   ├── loader.go                     # NewConfig() — reads env into structs
-│       │   │   └── provider.go                   # Get() singleton via sync.Once
+│       │   │   ├── config.go                            # Config, AppConfig, DBConfig, JWTConfig, LogConfig structs
+│       │   │   ├── const.go                             # Env key constants
+│       │   │   ├── env.go                               # godotenv loader
+│       │   │   ├── loader.go                            # NewConfig() — reads env into structs
+│       │   │   └── provider.go                          # Get() singleton via sync.Once
 │       │   │
 │       │   ├── database/
 │       │   │   └── postgres/
-│       │   │       ├── connections.go            # pgxpool setup, New(), Close()
-│       │   │       ├── const.go                  # Pool defaults (max/min conns, timeouts)
-│       │   │       ├── dsn.go                    # BuildDSN() — postgres connection string
-│       │   │       ├── migration.go              # MigrateUp(), MigrateDown() via Goose
-│       │   │       └── tx.go                     # WithTx(), WithTxSerializable() — transaction helpers
-│       │   │
-│       │   ├── logger/
-│       │   │   └── logger.go                     # New(), WithContext(), FromContext() — slog JSON
-│       │   │
-│       │   ├── session/
-│       │   │   ├── session.go                    # Session struct, Repository interface, GenerateRefreshToken()
-│       │   │   └── service.go                    # Issue(), Rotate() + reuse detection, Revoke(), RevokeAll()
+│       │   │       ├── connections.go                   # pgxpool setup, New(), Close()
+│       │   │       ├── const.go                         # Pool defaults
+│       │   │       ├── dsn.go                           # BuildDSN()
+│       │   │       ├── migration.go                     # MigrateUp(), MigrateDown() via Goose
+│       │   │       └── tx.go                            # WithTx() transaction helper
 │       │   │
 │       │   └── server/
-│       │       └── server.go                     # Gin engine, Recovery middleware, logger injection, Run()
+│       │       └── server.go                            # Gin engine, Recovery middleware, Run()
 │       │
 │       └── security/
+│           ├── security.go                              # GenerateToken(), GenerateRefreshToken()
 │           ├── jwt/
-│           │   ├── claims.go                     # Claims — user_id + email only
-│           │   ├── config.go                     # JWT config struct (secret, expiry, issuer)
-│           │   └── service.go                    # New(), CreateToken(), VerifyToken()
+│           │   ├── claims.go                            # Claims — user_id + email only
+│           │   ├── config.go                            # JWT config struct (secret, expiry, issuer)
+│           │   └── service.go                           # New(), CreateToken(), VerifyToken()
 │           └── password/
-│               ├── argon2.go                     # Pure generateHash() — argon2id
-│               ├── config.go                     # Argon2 params (memory, iterations, parallelism)
-│               └── password.go                   # Hasher — Hash(), Verify()
+│               ├── argon2.go                            # Pure generateHash() — argon2id
+│               ├── config.go                            # Argon2 params
+│               └── password.go                          # Hasher — Hash(), Verify()
 │
 ├── migrations/
-│   ├── 20260605155734_tbl_user.sql               # users table + user_status enum
-│   ├── 20260605155848_create_profiles.sql        # profiles table
-│   ├── 20260605160022_create_email_verifications.sql  # email_verifications table
-│   └── 20260605160339_create_sessions.sql        # sessions table — refresh token store
+│   ├── 20260605155734_tbl_user.sql                      # users table + user_status enum
+│   ├── 20260605155848_create_profiles.sql               # profiles table
+│   ├── 20260605160022_create_email_verifications.sql    # email_verifications table
+│   └── 20260605160339_create_sessions.sql               # sessions table — refresh token store
 │
 ├── pkg/
 │   ├── response/
-│   │   └── json.go                               # Success(), Created(), Error(), Paginated(), PaginationMeta
+│   │   └── json.go                                      # Success(), Error(), Paginated()
 │   ├── validator/
-│   │   └── validator.go                          # Validate(), strong_password rule, snake_case error keys
+│   │   └── validator.go                                 # BindAndValidate(), strong_password rule
 │   └── pagination/
-│       └── pagination.go                         # ParsePage(), ParseCursor(), TotalPages(), Page, Cursor
+│       └── pagination.go                                # ParsePage(), TotalPages()
 │
 ├── go.mod
 ├── go.sum
 └── README.md
 ```
+
+---
+
+## IAM Module Architecture
+
+All identity-related logic is grouped under `internal/modules/iam/`. `main.go` only needs one call:
+
+```go
+iam.New(db, cfg.JWT).Mount(api)
+```
+
+### Sub-module responsibilities
+
+| Sub-module  | Owns                                                   |
+|-------------|--------------------------------------------------------|
+| `auth`      | User registration, email verification, login, token refresh |
+| `user`      | Profile creation and management                        |
+| `session`   | Refresh token storage, rotation, and revocation        |
+
+### Dependency graph
+
+```
+iam.Module
+  ├── auth.Service  ──depends──▶  user.Service
+  │                 ──depends──▶  session.Service
+  │                 ──depends──▶  jwt.Service
+  │                 ──depends──▶  password.Hasher
+  ├── user.Service  ──depends──▶  user.Repository
+  └── session.Service ─depends─▶  session.Repository
+```
+
+No circular dependencies — `user` and `session` know nothing about `auth`.
 
 ---
 
@@ -119,8 +163,8 @@ Claims { user_id, email, iss, iat, exp }
 
 ```go
 svc := jwt.New([]byte(cfg.JWT.SecretKey))
-token, _  := svc.CreateToken(userID, email)   // 15-min access token
-claims, _ := svc.VerifyToken(tokenStr)         // returns Claims or sentinel error
+token, _  := svc.CreateToken(userID, email, expiresAt)
+claims, _ := svc.VerifyToken(tokenStr)
 ```
 
 Refresh tokens are random 32-byte values stored as SHA-256 hashes in the `sessions` table — never embedded in JWTs.
@@ -130,11 +174,11 @@ Refresh tokens are random 32-byte values stored as SHA-256 hashes in the `sessio
 ```
 Request
   ↓
-Authenticate(jwtSvc)           → verifies JWT → sets user_id, email in context
+Authenticate(jwtSvc)            → verifies JWT → sets user_id, email in context
   ↓
-OrgContext(orgRepo)             → reads X-Org-ID header → DB lookup → sets org_id, role
+OrgContext(orgRepo)              → reads X-Org-ID header → DB lookup → sets org_id, role
   ↓
-RequireRole("admin", "member")  → checks role → 403 if not allowed
+RequireRole("admin", "member")   → checks role → 403 if not allowed
   ↓
 Handler
 ```
@@ -157,14 +201,15 @@ Handler
 ```
 Handler (bind + validate)
   ↓
-Service.Register()
-  ├── 1. repo.ExistsByEmail()       → 409 Conflict if taken
-  ├── 2. hasher.Hash(password)      → Argon2id hash
-  ├── 3. repo.WithTx()              → begin transaction
-  │       ├── repo.CreateUser()     → INSERT users
-  │       └── repo.CreateProfile()  → INSERT profiles
+auth.Service.Register()
+  ├── 1. repo.ExistsByEmail()              → 409 Conflict if taken
+  ├── 2. hasher.Hash(password)             → Argon2id hash
+  ├── 3. db.WithTx()                       → begin transaction
+  │       ├── repo.CreateUser()            → INSERT users
+  │       ├── user.Service.CreateProfile() → INSERT profiles
+  │       └── repo.CreateEmailVerification() → INSERT email_verifications
   │   (rollback on any error)
-  └── 4. dto.NewUserResponse()      → map User + Profile → response
+  └── 4. return UserResponse
 ```
 
 Request:
@@ -177,53 +222,25 @@ Request:
 }
 ```
 
-Response `201`:
+Response `200`:
 ```json
 {
   "data": {
-    "user": {
-      "id":         "uuid",
-      "email":      "user@example.com",
-      "first_name": "John",
-      "last_name":  "Doe",
-      "status":     "pending",
-      "created_at": "2026-06-06T..."
-    }
+    "id":         "uuid",
+    "email":      "user@example.com",
+    "created_at": "2026-06-07T..."
   }
 }
 ```
 
-### Module layer dependency chain
-
-```
-module.go
-  └── NewRepository(db)      → postgresRepository (implements Repository interface)
-  └── NewService(repo, hasher) → service (implements Service interface)
-  └── NewHandler(svc)        → Handler
-  └── Mount(rg)              → RegisterRoutes
-```
-
-Service never holds `*postgres.DB` — it calls `repo.WithTx()` through the interface. DB is fully hidden behind the repository.
-
 ---
 
-## Database Schema
+## Session / Refresh Token System
 
-| Table                  | Description                                          |
-|------------------------|------------------------------------------------------|
-| `users`                | Core user — email, password hash, status enum        |
-| `profiles`             | User profile — first name, last name, avatar         |
-| `email_verifications`  | Email verification tokens with expiry                |
-| `sessions`             | Refresh token hashes — expires_at + revoked_at       |
-
----
-
-## Refresh Token System
-
-Handled by `internal/shared/core/session/`.
+Handled by `internal/modules/iam/session/`.
 
 ### Rotation
-Every refresh issues a new token and revokes the old session row.
+Every refresh call issues a new token and revokes the old session row.
 
 ### Reuse detection
 A revoked token presented again → `RevokeAll(userID)` → all devices signed out → 401.
@@ -239,50 +256,14 @@ A revoked token presented again → `RevokeAll(userID)` → all devices signed o
 
 ---
 
-## pkg/ — Shared Utilities
+## Database Schema
 
-### response
-
-```go
-response.Success(c, data)          // 200
-response.Created(c, data)          // 201
-response.NoContent(c)              // 204
-response.Error(c, err)             // apperr.AppError → correct status automatically
-response.Paginated(c, data, meta)  // 200 with pagination envelope
-```
-
-### validator
-
-```go
-type RegisterRequest struct {
-    Email    string `validate:"required,email"`
-    Password string `validate:"required,strong_password"`
-}
-
-if errs := validator.Validate(&req); errs != nil {
-    c.JSON(400, gin.H{"errors": errs})
-}
-// errs → map[string]string{"email": "must be a valid email address"}
-```
-
-Custom rule: `strong_password` — min 8 chars, uppercase + lowercase + digit.
-
-### pagination
-
-```go
-page   := pagination.ParsePage(c)    // ?page=1&page_size=20
-cursor := pagination.ParseCursor(c)  // ?after=<token>&page_size=20
-
-items, total, _ := svc.List(ctx, page.Limit(), page.Offset())
-response.Paginated(c, items, response.PaginationMeta{
-    Page:       page.Page,
-    PageSize:   page.PageSize,
-    Total:      total,
-    TotalPages: pagination.TotalPages(total, page.PageSize),
-    HasNext:    page.Page < pagination.TotalPages(total, page.PageSize),
-    HasPrev:    page.Page > 1,
-})
-```
+| Table                  | Description                                        |
+|------------------------|----------------------------------------------------|
+| `users`                | Core user — email, password hash, status enum      |
+| `profiles`             | User profile — first name, last name, avatar       |
+| `email_verifications`  | Email verification tokens with expiry              |
+| `sessions`             | Refresh token hashes — expires_at + revoked_at     |
 
 ---
 
@@ -315,8 +296,6 @@ JWT_ISSUER=app-service
 LOG_LEVEL=info
 ```
 
-All keys and defaults are in `internal/shared/core/config/const.go`.
-
 ---
 
 ## Getting Started
@@ -333,7 +312,7 @@ cd cmd/api
 go run main.go
 ```
 
-Server starts on `APP_PORT` (default `8080`). Migrations run automatically on startup.
+Migrations run automatically on startup.
 
 ### Migrations manually
 
