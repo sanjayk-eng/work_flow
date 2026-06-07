@@ -2,7 +2,7 @@
 -- +goose StatementBegin
 
 CREATE TABLE email_verifications (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     user_id UUID NOT NULL,
 

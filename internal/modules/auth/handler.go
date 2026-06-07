@@ -1,10 +1,8 @@
 package auth
 
 import (
-	"net/http"
-
 	"github/sanjay-khandelwal/internal/modules/auth/dto"
-	"github/sanjay-khandelwal/internal/shared/core/logger"
+	"github/sanjay-khandelwal/internal/shared/apperr"
 	"github/sanjay-khandelwal/pkg/response"
 	"github/sanjay-khandelwal/pkg/validator"
 
@@ -24,21 +22,34 @@ func NewHandler(svc Service) *Handler {
 func (h *Handler) Register(c *gin.Context) {
 	var req dto.RegisterRequest
 
-	// bind JSON + validate in one call
 	if ok, errs := validator.BindAndValidate(c, &req); !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"errors": errs})
+		response.ValidationError(c, errs)
 		return
 	}
 
-	log := logger.FromContext(c.Request.Context())
-	log.Info("auth: register attempt", "email", req.Email)
-
-	res, err := h.svc.Register(c.Request.Context(), &req)
+	user, err := h.svc.Register(c.Request.Context(), &req)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	log.Info("auth: user registered", "user_id", res.User.ID)
-	response.Created(c, res)
+	response.Success(c, user)
+}
+
+func (h *Handler) EmailVerification(c *gin.Context) {
+
+	token := c.Query("token")
+	if token == "" {
+		response.Error(c, apperr.BadRequest("token is required"))
+		return
+	}
+
+	if err := h.svc.EmailVerify(c.Request.Context(), token); err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{
+		"message": "email verified successfully",
+	})
 }

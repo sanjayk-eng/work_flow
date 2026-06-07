@@ -1,13 +1,15 @@
 -- +goose Up
 -- +goose StatementBegin
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 CREATE TYPE user_status AS ENUM (
     'pending',
     'active'
 );
-
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE TABLE users (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,

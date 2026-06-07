@@ -8,8 +8,8 @@ type config struct {
 	KeyLength   uint32
 }
 
-func defaultConfig() config {
-	return config{
+func defaultConfig() *config {
+	return &config{
 		Memory:      64 * 1024,
 		Iterations:  3,
 		Parallelism: 2,

@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"github/sanjay-khandelwal/internal/modules/user"
 	"github/sanjay-khandelwal/internal/shared/core/database/postgres"
 	"github/sanjay-khandelwal/internal/shared/security/password"
 
@@ -15,9 +16,18 @@ type Module struct {
 	handler *Handler
 }
 
-func New(db *postgres.DB, hasher *password.Hasher) *Module {
+func New(db *postgres.DB, userservice user.Service) *Module {
+
+	// password Hasher
+	hashPassword := password.New()
+
+	// authRepository
 	repo := NewRepository(db)
-	svc := NewService(repo, hasher)
+
+	// authService
+	svc := NewService(repo, db, hashPassword, userservice)
+
+	// authHandler
 	handler := NewHandler(svc)
 	return &Module{handler: handler}
 }

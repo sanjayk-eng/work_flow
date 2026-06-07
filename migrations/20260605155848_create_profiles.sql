@@ -2,7 +2,7 @@
 -- +goose StatementBegin
 
 CREATE TABLE profiles (
-    user_id UUID PRIMARY KEY,
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
     first_name VARCHAR(100),
     last_name VARCHAR(100),

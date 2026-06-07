@@ -21,15 +21,15 @@ func NewService(repo Repository, tokenLifetime time.Duration) *Service {
 }
 
 // Issue creates a new session for a user and returns the raw refresh token.
-// The raw token is returned to the client; only the hash is stored in DB.
-func (s *Service) Issue(ctx context.Context, userID, sessionID string) (string, error) {
+// SessionID is generated internally — callers don't manage UUIDs.
+func (s *Service) Issue(ctx context.Context, userID string) (string, error) {
 	raw, hash, err := GenerateRefreshToken()
 	if err != nil {
 		return "", apperr.Internal("failed to generate refresh token", err)
 	}
 
 	sess := &Session{
-		ID:               sessionID,
+		ID:               generateID(),
 		UserID:           userID,
 		RefreshTokenHash: hash,
 		ExpiresAt:        time.Now().Add(s.tokenLifetime),
@@ -51,7 +51,7 @@ func (s *Service) Issue(ctx context.Context, userID, sessionID string) (string, 
 //  3. If found but revoked → REUSE DETECTED → revoke all sessions → force re-login
 //  4. If expired → revoke + return expired error
 //  5. Revoke old session → issue new session → return new raw token
-func (s *Service) Rotate(ctx context.Context, rawToken, newSessionID string) (string, error) {
+func (s *Service) Rotate(ctx context.Context, rawToken string) (string, error) {
 	hash := HashToken(rawToken)
 
 	sess, err := s.repo.GetByTokenHash(ctx, hash)
@@ -81,7 +81,7 @@ func (s *Service) Rotate(ctx context.Context, rawToken, newSessionID string) (st
 	}
 
 	// Issue new session
-	newRaw, err := s.Issue(ctx, sess.UserID, newSessionID)
+	newRaw, err := s.Issue(ctx, sess.UserID)
 	if err != nil {
 		return "", err
 	}

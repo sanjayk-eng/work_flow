@@ -23,8 +23,13 @@ type OrgMemberResolver interface {
 // Flow: user_id (from JWT) + org_id (from header) → DB membership lookup → role set in context
 func OrgContext(resolver OrgMemberResolver) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		userID, ok := c.Get(CtxUserID)
+		val, ok := c.Get(CtxUserID)
 		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+			return
+		}
+		userID, ok := val.(string)
+		if !ok || userID == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
 			return
 		}
@@ -35,7 +40,7 @@ func OrgContext(resolver OrgMemberResolver) gin.HandlerFunc {
 			return
 		}
 
-		role, err := resolver.GetMemberRole(c.Request.Context(), userID.(string), orgID)
+		role, err := resolver.GetMemberRole(c.Request.Context(), userID, orgID)
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "not a member of this organization"})
 			return

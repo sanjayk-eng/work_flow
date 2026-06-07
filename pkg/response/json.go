@@ -8,6 +8,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func ValidationError(c *gin.Context, errs map[string]string) {
+	c.JSON(http.StatusBadRequest, gin.H{
+		"code":   400,
+		"errors": errs,
+	})
+}
+
 // Success writes a 200 JSON response with a data payload.
 func Success(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, gin.H{"data": data})

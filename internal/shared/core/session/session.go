@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // Session represents a row in the sessions table.
@@ -56,4 +58,8 @@ func HashToken(raw string) string {
 func hashToken(raw string) string {
 	sum := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(sum[:])
+}
+
+func generateID() string {
+	return uuid.New().String()
 }

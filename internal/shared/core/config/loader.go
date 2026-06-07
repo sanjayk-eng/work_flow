@@ -29,7 +29,6 @@ func NewConfig() *Config {
 			RefreshExpiry: getEnv(EnvJWTRefreshExpiry, "168h"),
 			Issuer:        getEnv(EnvJWTIssuer, "app-service"),
 		},
-
 		Log: LogConfig{
 			Level: getEnv(EnvLogLevel, "info"),
 		},

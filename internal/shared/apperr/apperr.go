@@ -14,10 +14,7 @@ type AppError struct {
 }
 
 func (e *AppError) Error() string {
-	if e.Err != nil {
-		return e.Err.Error()
-	}
-	return e.Message
+	return e.Message // always return safe client message — internal cause is for Unwrap() only
 }
 
 func (e *AppError) Unwrap() error { return e.Err }

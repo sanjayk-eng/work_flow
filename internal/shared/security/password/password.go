@@ -9,14 +9,12 @@ import (
 
 // Hasher owns config and exposes secure API
 type Hasher struct {
-	cfg config
+	cfg *config
 }
 
-// constructor
+// New creates a Hasher with default Argon2id parameters.
 func New() *Hasher {
-	return &Hasher{
-		cfg: defaultConfig(),
-	}
+	return &Hasher{cfg: defaultConfig()}
 }
 
 func (h *Hasher) Hash(password string) (string, error) {
@@ -67,7 +65,7 @@ func (h *Hasher) Verify(password, encoded string) (bool, error) {
 		return false, err
 	}
 
-	newHash := generateHash(password, salt, config{
+	newHash := generateHash(password, salt, &config{
 		Memory:      memory,
 		Iterations:  iterations,
 		Parallelism: parallelism,

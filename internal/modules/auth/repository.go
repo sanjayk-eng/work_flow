@@ -2,21 +2,16 @@ package auth
 
 import (
 	"context"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
 // Repository is the interface the service depends on.
-// The concrete implementation lives in repository_postgres.go.
 type Repository interface {
-	// ExistsByEmail returns true if a user with that email already exists.
-	ExistsByEmail(ctx context.Context, email string) (bool, error)
-
-	// CreateUser inserts a new user row inside the provided transaction.
-	CreateUser(ctx context.Context, tx pgx.Tx, u *User) error
-
-	// CreateProfile inserts a new profile row inside the provided transaction.
-	CreateProfile(ctx context.Context, tx pgx.Tx, p *Profile) error
+	// CreateUser inserts a new user row. Returns apperr.Conflict on duplicate email.
+	CreateUser(ctx context.Context, tx pgx.Tx, u *User) (uuid.UUID, error)
 
 	// GetByID returns a user by their UUID.
 	GetByID(ctx context.Context, id string) (*User, error)
@@ -24,7 +19,15 @@ type Repository interface {
 	// GetByEmail returns a user by email.
 	GetByEmail(ctx context.Context, email string) (*User, error)
 
-	// WithTx runs fn inside a database transaction.
-	// Service calls this instead of holding a *postgres.DB directly.
-	WithTx(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx) error) error
+	// createEmaiilVerification creates a new email verification record for the user.
+	CreateEmailVerification(ctx context.Context, tx pgx.Tx, userID uuid.UUID, token string, expiresAt time.Time) error
+
+	// GetVerificationByToken retrieves an email verification record by its token.
+	GetVerificationByToken(ctx context.Context, token string) (*EmailVerification, error)
+
+	// MarkEmailVerified marks the user's email as verified and sets the verification timestamp.
+	MarkEmailVerified(ctx context.Context, userID uuid.UUID) error
+
+	//Get User If by Email
+	GetUserIdByEmail(ctx context.Context, email string) (uuid.UUID, error)
 }
