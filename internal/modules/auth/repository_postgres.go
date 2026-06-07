@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github/sanjay-khandelwal/internal/shared/core/database/postgres"
@@ -52,7 +53,7 @@ func (r *postgresRepository) CreateUser(ctx context.Context, tx pgx.Tx, u *User)
 
 	return id, err
 }
-func (r *postgresRepository) GetByID(ctx context.Context, id string) (*User, error) {
+func (r *postgresRepository) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
 
 	var u User
 
@@ -170,4 +171,95 @@ func (r *postgresRepository) GetUserIdByEmail(ctx context.Context, email string)
 	err := r.db.Pool.QueryRow(ctx, `SELECT idFROM usersWHERE email = $1`, email).Scan(UserId)
 
 	return UserId, err
+}
+
+func (r *postgresRepository) ExistsByEmail(ctx context.Context, email string) (bool, error) {
+
+	var exists bool
+
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM users WHERE email = $1
+		)
+	`, email).Scan(&exists)
+
+	if err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}
+
+func (r *postgresRepository) CreateSession(ctx context.Context, s *Session) error {
+
+	_, err := r.db.Pool.Exec(ctx, `
+		INSERT INTO sessions (
+			user_id,
+			refresh_token_hash,
+			expires_at,
+			created_at
+		)
+		VALUES ($1, $2, $3, NOW())
+	`,
+		s.UserID,
+		s.RefreshTokenHash,
+		s.ExpiresAt,
+	)
+
+	if err != nil {
+		return fmt.Errorf("create session: %w", err)
+	}
+
+	return nil
+}
+
+func (r *postgresRepository) RevokeSession(ctx context.Context, sessionID uuid.UUID, now time.Time) error {
+
+	_, err := r.db.Pool.Exec(ctx, `
+		UPDATE sessions
+		SET revoked_at = $2
+		WHERE id = $1
+		  AND revoked_at IS NULL
+	`, sessionID, now)
+
+	return err
+}
+
+func (r *postgresRepository) RevokeAll(ctx context.Context, userID uuid.UUID) error {
+
+	_, err := r.db.Pool.Exec(ctx, `
+		UPDATE sessions
+		SET revoked_at = NOW()
+		WHERE user_id = $1
+		  AND revoked_at IS NULL
+	`, userID)
+
+	return err
+}
+
+func (r *postgresRepository) GetSessionByRefreshHash(ctx context.Context, hash string) (*Session, error) {
+
+	var s Session
+
+	err := r.db.Pool.QueryRow(ctx, `
+		SELECT
+			id,
+			user_id,
+			refresh_token_hash,
+			expires_at,
+			revoked_at,
+			created_at
+		FROM sessions
+		WHERE refresh_token_hash = $1
+		LIMIT 1
+	`, hash).Scan(
+		&s.ID,
+		&s.UserID,
+		&s.RefreshTokenHash,
+		&s.ExpiresAt,
+		&s.RevokedAt,
+		&s.CreatedAt,
+	)
+
+	return &s, err
 }

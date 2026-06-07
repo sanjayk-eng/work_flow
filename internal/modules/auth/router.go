@@ -12,5 +12,11 @@ func RegisterRoutes(rg *gin.RouterGroup, h *Handler) {
 	{
 		auth.POST("/register", h.Register)
 		auth.GET("/verify-email", h.EmailVerification)
+		
+		auth.POST("/login", h.Login)
+		auth.POST("/refresh", h.Refresh)
+		// auth.POST("/logout", h.Logout) // NEW (important)
+
+		// auth.GET("/me", middleware.Auth(), h.Me) // NEW (identity check)
 	}
 }

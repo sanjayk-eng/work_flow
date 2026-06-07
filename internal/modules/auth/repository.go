@@ -14,7 +14,7 @@ type Repository interface {
 	CreateUser(ctx context.Context, tx pgx.Tx, u *User) (uuid.UUID, error)
 
 	// GetByID returns a user by their UUID.
-	GetByID(ctx context.Context, id string) (*User, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 
 	// GetByEmail returns a user by email.
 	GetByEmail(ctx context.Context, email string) (*User, error)
@@ -30,4 +30,19 @@ type Repository interface {
 
 	//Get User If by Email
 	GetUserIdByEmail(ctx context.Context, email string) (uuid.UUID, error)
+
+	// chack emaail exists or not
+	ExistsByEmail(ctx context.Context, email string) (bool, error)
+
+	//
+	CreateSession(ctx context.Context, s *Session) error
+
+	//
+	RevokeSession(ctx context.Context, sessionID uuid.UUID, now time.Time) error
+
+	//
+	RevokeAll(ctx context.Context, userID uuid.UUID) error
+
+	//
+	GetSessionByRefreshHash(ctx context.Context, hash string) (*Session, error)
 }

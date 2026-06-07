@@ -2,7 +2,9 @@ package auth
 
 import (
 	"github/sanjay-khandelwal/internal/modules/user"
+	"github/sanjay-khandelwal/internal/shared/core/config"
 	"github/sanjay-khandelwal/internal/shared/core/database/postgres"
+	"github/sanjay-khandelwal/internal/shared/security/jwt"
 	"github/sanjay-khandelwal/internal/shared/security/password"
 
 	"github.com/gin-gonic/gin"
@@ -16,16 +18,19 @@ type Module struct {
 	handler *Handler
 }
 
-func New(db *postgres.DB, userservice user.Service) *Module {
+func New(db *postgres.DB, userservice user.Service, JWT config.JWTConfig) *Module {
 
 	// password Hasher
 	hashPassword := password.New()
+
+	// JWT SERVICE
+	jwt := jwt.New([]byte(JWT.SecretKey))
 
 	// authRepository
 	repo := NewRepository(db)
 
 	// authService
-	svc := NewService(repo, db, hashPassword, userservice)
+	svc := NewService(repo, db, hashPassword, jwt, userservice)
 
 	// authHandler
 	handler := NewHandler(svc)

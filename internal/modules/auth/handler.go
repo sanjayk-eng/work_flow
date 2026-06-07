@@ -53,3 +53,42 @@ func (h *Handler) EmailVerification(c *gin.Context) {
 		"message": "email verified successfully",
 	})
 }
+
+func (h *Handler) Login(c *gin.Context) {
+	var req dto.LoginRequest
+
+	// validate
+	ok, errs := validator.BindAndValidate(c, &req)
+	if !ok {
+		response.ValidationError(c, errs)
+		return
+	}
+
+	resp, err := h.svc.Login(c.Request.Context(), &req)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, resp)
+}
+
+func (h *Handler) Refresh(c *gin.Context) {
+
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.BadRequest("invalid request", err))
+		return
+	}
+
+	res, err := h.svc.RefreshToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, res)
+}

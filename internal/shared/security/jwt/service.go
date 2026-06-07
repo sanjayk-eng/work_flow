@@ -15,7 +15,7 @@ var (
 )
 
 type Service struct {
-	cfg *config
+	Cfg *config
 }
 
 func New(secretKey []byte) *Service {
@@ -23,26 +23,26 @@ func New(secretKey []byte) *Service {
 	if len(secretKey) > 0 {
 		cfg.SecretKey = secretKey
 	}
-	return &Service{cfg: cfg}
+	return &Service{Cfg: cfg}
 }
 
 // CreateToken issues a short-lived access token containing userID and email.
 // Refresh token lifecycle is handled externally via DB sessions table.
-func (s *Service) CreateToken(userID, email string) (string, error) {
+func (s *Service) CreateToken(userID, email string, expiresAt time.Time) (string, error) {
 	now := time.Now()
 
 	claims := Claims{
 		UserID: userID,
 		Email:  email,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Issuer:    s.cfg.Issuer,
+			Issuer:    s.Cfg.Issuer,
 			IssuedAt:  jwt.NewNumericDate(now),
-			ExpiresAt: jwt.NewNumericDate(now.Add(s.cfg.AccessExpiry)),
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(s.cfg.SecretKey)
+	return token.SignedString(s.Cfg.SecretKey)
 }
 
 // VerifyToken parses and validates an access token.
@@ -70,7 +70,7 @@ func (s *Service) keyFunc(token *jwt.Token) (interface{}, error) {
 		slog.Debug("jwt: unexpected signing method", "alg", token.Header["alg"])
 		return nil, ErrInvalidToken
 	}
-	return s.cfg.SecretKey, nil
+	return s.Cfg.SecretKey, nil
 }
 
 func (s *Service) mapError(err error) error {

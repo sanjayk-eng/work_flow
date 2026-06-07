@@ -1,6 +1,10 @@
 package auth
 
-import "time"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 type UserStatus string
 type email string
@@ -28,4 +32,13 @@ type EmailVerification struct {
 	ExpiresAt  time.Time
 	VerifiedAt *time.Time
 	CreatedAt  time.Time
+}
+
+type Session struct {
+	ID               uuid.UUID
+	UserID           uuid.UUID
+	RefreshTokenHash string
+	ExpiresAt        time.Time
+	RevokedAt        *time.Time
+	CreatedAt        time.Time
 }

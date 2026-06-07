@@ -35,7 +35,7 @@ func main() {
 	userModule := user.New(db)
 
 	// Mount modules
-	auth.New(db, userModule.Service).Mount(api)
+	auth.New(db, userModule.Service , cfg.JWT).Mount(api)
 
 	// Start
 	if err := srv.Run(cfg.App); err != nil {
