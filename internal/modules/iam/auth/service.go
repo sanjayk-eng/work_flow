@@ -25,8 +25,6 @@ import (
 
 type Service interface {
 	Register(ctx context.Context, req *dto.RegisterRequest) (*dto.UserResponse, error)
-	CreateUser(ctx context.Context, tx pgx.Tx, req *dto.RegisterRequest) (uuid.UUID, error)
-	SendVerification(ctx context.Context, tx pgx.Tx, userID uuid.UUID, email string) error
 	EmailVerify(ctx context.Context, token string) error
 	Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (*dto.RefreshResponse, error)
@@ -135,7 +133,7 @@ func (s *service) SendVerification(ctx context.Context, tx pgx.Tx, userID uuid.U
 	}
 
 	verifyURL := fmt.Sprintf(
-		"http://localhost:8082/api/v1/auth/verify-email?token=%s",
+		"http://localhost:5173/auth/verify-email?token=%s",
 		url.QueryEscape(token),
 	)
 	// TODO: replace with email service
@@ -195,6 +193,7 @@ func (s *service) Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginR
 
 	ok, err := s.hasher.Verify(req.Password, u.PasswordHash)
 	if err != nil {
+		fmt.Println(err.Error())
 		return nil, apperr.Internal("failed to verify password", err)
 	}
 	if !ok {

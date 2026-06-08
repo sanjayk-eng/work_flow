@@ -5,6 +5,9 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"strings"
+
+	"github/sanjay-khandelwal/internal/shared/apperr"
 )
 
 // Hasher owns config and exposes secure API
@@ -36,33 +39,29 @@ func (h *Hasher) Hash(password string) (string, error) {
 	), nil
 }
 
+// Verify checks a plaintext password against an encoded Argon2id hash.
+// Format: $argon2id$v=19$m=<mem>,t=<iter>,p=<par>$<salt>$<hash>
 func (h *Hasher) Verify(password, encoded string) (bool, error) {
-	var memory uint32
-	var iterations uint32
+	// Split on $ — parts: ["", "argon2id", "v=19", "m=...,t=...,p=...", "<salt>", "<hash>"]
+	parts := strings.Split(encoded, "$")
+	if len(parts) != 6 {
+		return false, apperr.Internal("invalid hash format")
+	}
+
+	var memory, iterations uint32
 	var parallelism uint8
-	var saltB64, hashB64 string
-
-	_, err := fmt.Sscanf(
-		encoded,
-		"$argon2id$v=19$m=%d,t=%d,p=%d$%s$%s",
-		&memory,
-		&iterations,
-		&parallelism,
-		&saltB64,
-		&hashB64,
-	)
-	if err != nil {
-		return false, err
+	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism); err != nil {
+		return false, apperr.Internal("invalid hash params", err)
 	}
 
-	salt, err := base64.RawStdEncoding.DecodeString(saltB64)
+	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
 	if err != nil {
-		return false, err
+		return false, apperr.Internal("invalid hash salt", err)
 	}
 
-	expectedHash, err := base64.RawStdEncoding.DecodeString(hashB64)
+	expectedHash, err := base64.RawStdEncoding.DecodeString(parts[5])
 	if err != nil {
-		return false, err
+		return false, apperr.Internal("invalid hash value", err)
 	}
 
 	newHash := generateHash(password, salt, &config{
